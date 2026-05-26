@@ -1,4 +1,4 @@
-# [DeepSWE](https://deep-swe.vercel.app)
+# [DeepSWE](https://deepswe.datacurve.ai/)
 
 DeepSWE is a benchmark for measuring frontier coding agents on original, long-horizon software engineering tasks drawn from active open-source repositories. The benchmark includes 113 tasks across TypeScript, Go, Python, JavaScript, and Rust, with isolated environments and program-based verifiers.
 
