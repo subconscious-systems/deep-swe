@@ -1,22 +1,31 @@
-# Pier job (dev): mini-swe-agent → Baseten Chat Completions (via LiteLLM).
+# Pier job (full eval, DGX Spark): mini-swe-agent → Baseten Chat Completions (via LiteLLM).
 #
-# Quick smoke / iteration — NOT leaderboard-comparable.
-#   pier run -c mini-swe-agent-dev.yaml --env-file .env -y
-#   pier run -c mini-swe-agent-dev.yaml --env-file .env -y -p tasks/<task-id>
+# Same as mini-swe-agent-full.yaml except 8 concurrent trials (sized for the
+# DGX Spark: 20 cores / 128 GB unified memory; Linux Docker has no VM cap).
+# Concurrency runs 8 *different tasks* in parallel — per-task limits are
+# unchanged, so results stay leaderboard-comparable:
+#   - Agent timeout: task.toml [agent] timeout_sec (5400 s / 90 min)
+#   - Steps: mini-swe-agent default (step_limit: 0 = unlimited until timeout)
+#   - Attempts: 4 per task (matches official protocol — leaderboard "Pass@1"
+#     is the mean per-trial pass rate over 4 trials/task; 452 trials total)
 #
-# Dev caps (not used on full eval): 30 min agent timeout, 600 step limit, 1 worker.
-# Same token pricing as full: pricing/subconscious-tim-qwen3.6-27b.json
+# Token pricing (Baseten tim-qwen3.6-27b): pricing/subconscious-tim-qwen3.6-27b.json
+#   Input $0.50/1M, cached input $0.05/1M, output $3.50/1M
 #
-# Resume after interrupt:
+# Set DEEP_SWE_ROOT in .env to this repo's absolute path (bind mount for pricing).
+#
+#   ./scripts/pier-run.sh run -c mini-swe-agent-full-spark.yaml -y
+#
+# Resume after interrupt (same YAML; do not change config between start and resume):
 #   pier job resume -p jobs/<job-dir>
 #
-# Full eval: mini-swe-agent-full.yaml
+# Laptop full eval: mini-swe-agent-full.yaml • Dev/smoke: mini-swe-agent-dev.yaml
 
-n_concurrent_trials: 1
+n_concurrent_trials: 8
+n_attempts: 4
 
 agents:
   - name: mini-swe-agent
-    override_timeout_sec: 1800
     # Keep in sync with BASETEN_MODEL in .env
     model_name: subconscious/tim-qwen3.6-27b
     env:
@@ -24,30 +33,19 @@ agents:
       OPENAI_BASE_URL: ${BASETEN_BASE_URL}
       # Required for custom model slugs Pier/LiteLLM don't recognize (e.g. subconscious/...)
       MSWEA_API_KEY: ${BASETEN_API_KEY}
-      # Retry transient API errors (e.g. 502 from the inference endpoint) up to 4 times
-      MSWEA_MODEL_RETRY_STOP_AFTER_ATTEMPT: "5"
       LITELLM_MODEL_REGISTRY_PATH: /opt/deep-swe/pricing/model-registry.json
+      # Overrides Pier's ignore_errors so unregistered models fail loudly
       MSWEA_COST_TRACKING: default
     kwargs:
       # Use LiteLLM chat completions; avoid the openai/ prefix (that routes to Responses API)
       model_class: litellm
       cost_limit: 0
-      config_yaml: |
-        agent:
-          step_limit: 600
       model_kwargs:
         # Base URL comes from OPENAI_BASE_URL in agent.env (LiteLLM reads it from the sandbox env)
         custom_llm_provider: openai
-        # Keep LiteLLM-internal retries off; MSWEA_MODEL_RETRY_STOP_AFTER_ATTEMPT
-        # above handles retries (the two would multiply otherwise)
-        num_retries: 0
 
 datasets:
   - path: tasks
-    task_names:
-      # - ts-pattern-match-each
-      # - happy-dom-abort-pending-body-reads
-      - true-myth-iterable-collection-combinators
 
 environment:
   type: docker

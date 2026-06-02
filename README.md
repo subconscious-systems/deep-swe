@@ -28,10 +28,10 @@ cp .env.example .env   # fill in BASETEN_* and DEEP_SWE_ROOT (absolute path to t
 uv tool install datacurve-pier
 
 # Dev smoke test (1 task, 30 min timeout, 600 step cap, 1 worker)
-pier run -c mini-swe-agent-dev.yaml --env-file .env -y
+./scripts/pier-run.sh run -c mini-swe-agent-dev.yaml -y
 
 # Full 113-task eval (leaderboard-comparable; verification on; 4 workers)
-pier run -c mini-swe-agent-full.yaml --env-file .env -y
+./scripts/pier-run.sh run -c mini-swe-agent-full.yaml -y
 
 # Single task
 pier run -c mini-swe-agent-dev.yaml --env-file .env -y -p tasks/<task-id>
@@ -66,16 +66,19 @@ Costs appear in `jobs/<job-dir>/result.json` as `stats.cost_usd` and per-trial `
 
 1. **Pause:** Press `Ctrl+C` once in the terminal running `pier run`. Let Pier shut down gracefully before force-killing the process or closing the laptop.
 2. **What is saved:** `jobs/<timestamp>/config.json`, `result.json`, `lock.json`, and per-trial directories with `result.json` for finished trials.
-3. **Resume** (use the same job YAML you started with; do not change mounts, pricing env, timeouts, or model between start and resume):
+3. **Resume** (uses the frozen `config.json` saved in the job directory—not the current YAML on disk):
 
 ```bash
 pier job resume -p jobs/<job-dir>
 ```
 
+Or with `DEEP_SWE_ROOT` set: `./scripts/pier-run.sh job resume -p jobs/<job-dir>`
+
 - Completed trials are skipped; only remaining trials run.
 - By default, `pier job resume` removes trial dirs that ended with `CancelledError` so those tasks are retried.
 - Trial folders without `result.json` but with partial artifacts are cleaned up and restarted from scratch.
 - Resume does **not** continue a single agent mid-trajectory—only at **trial** granularity.
+- If resume fails with a `lock.json` mismatch, Pier detected a change in job inputs (for example `DEEP_SWE_ROOT` or other `.env` values) since the job was created; restore the same environment or start a new job directory.
 
 Inspect progress and costs with `pier view jobs`.
 
