@@ -38,6 +38,12 @@ agents:
       model_kwargs:
         # Base URL comes from OPENAI_BASE_URL in agent.env (LiteLLM reads it from the sandbox env)
         custom_llm_provider: openai
+        # Per-completion output cap: 16k fits even dense write turns; if a step
+        # truncates mid-edit the agent recovers and continues across steps
+        max_tokens: 16384
+        # Sampling params (passed through to the completion request)
+        temperature: 0.7
+        top_p: 0.95
 
 datasets:
   - path: tasks
