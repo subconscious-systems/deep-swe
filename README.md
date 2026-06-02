@@ -28,10 +28,13 @@ cp .env.example .env   # fill in BASETEN_* and DEEP_SWE_ROOT (absolute path to t
 uv tool install datacurve-pier
 
 # Dev smoke test (1 task, 30 min timeout, 600 step cap, 1 worker)
-./scripts/pier-run.sh run -c mini-swe-agent-dev.yaml -y
+./run_dev.sh
 
 # Full 113-task eval (leaderboard-comparable; verification on; 4 workers)
 ./scripts/pier-run.sh run -c mini-swe-agent-full.yaml -y
+
+# Full eval on the DGX Spark (8 workers)
+./run_spark.sh
 
 # Single task
 pier run -c mini-swe-agent-dev.yaml --env-file .env -y -p tasks/<task-id>

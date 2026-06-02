@@ -14,7 +14,7 @@
 #
 # Set DEEP_SWE_ROOT in .env to this repo's absolute path (bind mount for pricing).
 #
-#   ./scripts/pier-run.sh run -c mini-swe-agent-full-spark.yaml -y
+#   ./run_spark.sh   (wraps: ./scripts/pier-run.sh run -c mini-swe-agent-full-spark.yaml -y)
 #
 # Resume after interrupt (same YAML; do not change config between start and resume):
 #   pier job resume -p jobs/<job-dir>

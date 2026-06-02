@@ -1,8 +1,8 @@
 # Pier job (dev): mini-swe-agent → Baseten Chat Completions (via LiteLLM).
 #
 # Quick smoke / iteration — NOT leaderboard-comparable.
-#   pier run -c mini-swe-agent-dev.yaml --env-file .env -y
-#   pier run -c mini-swe-agent-dev.yaml --env-file .env -y -p tasks/<task-id>
+#   ./run_dev.sh   (wraps: ./scripts/pier-run.sh run -c mini-swe-agent-dev.yaml -y)
+#   ./run_dev.sh -p tasks/<task-id>
 #
 # Dev caps (not used on full eval): 30 min agent timeout, 600 step limit, 1 worker.
 # Same token pricing as full: pricing/subconscious-tim-qwen3.6-27b.json
