@@ -1,0 +1,27 @@
+# Pier job: cursor-cli → native Cursor API (NOT Baseten-routable).
+#
+# cursor-agent ignores OPENAI_BASE_URL. LiteLLM's Cursor integration is IDE-only
+# (Cursor → LiteLLM), not cursor-cli → LiteLLM. For Baseten evals use
+# mini-swe-agent-dev.yaml, mini-swe-agent-full.yaml, claude-code.yaml, or opencode.yaml instead.
+#
+# Setup:
+#   cp .env.example .env   # fill in CURSOR_API_KEY
+#   pier run -c cursor-cli.yaml --env-file .env -y
+#
+# Other agent jobs: mini-swe-agent-dev.yaml, mini-swe-agent-full.yaml, claude-code.yaml, opencode.yaml, codex.yaml
+
+agents:
+  - name: cursor-cli
+    model_name: cursor/composer-2.5
+    env:
+      CURSOR_API_KEY: ${CURSOR_API_KEY}
+
+datasets:
+  - path: tasks
+    n_tasks: 1
+    sample_seed: 0
+
+environment:
+  type: docker
+
+jobs_dir: jobs

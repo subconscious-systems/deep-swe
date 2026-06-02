@@ -23,16 +23,61 @@ Use [Pier](https://github.com/datacurve-ai/pier) to run the benchmark:
 
 ```bash
 git clone https://github.com/datacurve-ai/deep-swe
+cd deep-swe
+cp .env.example .env   # fill in BASETEN_* and DEEP_SWE_ROOT (absolute path to this repo)
 uv tool install datacurve-pier
 
-# Claude Opus 4.7 via Claude Code
-export ANTHROPIC_API_KEY=...
-pier run -p deep-swe/tasks --agent mini-swe-agent --model anthropic/claude-opus-4-7
+# Dev smoke test (1 task, 30 min timeout, 600 step cap, 1 worker)
+pier run -c mini-swe-agent-dev.yaml --env-file .env -y
 
-# GPT-5.5 via Codex
-export OPENAI_API_KEY=...
-pier run -p deep-swe/tasks --agent mini-swe-agent --model openai/gpt-5.5
+# Full 113-task eval (leaderboard-comparable; verification on; 4 workers)
+pier run -c mini-swe-agent-full.yaml --env-file .env -y
+
+# Single task
+pier run -c mini-swe-agent-dev.yaml --env-file .env -y -p tasks/<task-id>
 ```
+
+Job configs: `mini-swe-agent-dev.yaml` (iteration), `mini-swe-agent-full.yaml` (full eval).
+
+Set `DEEP_SWE_ROOT` in `.env` to the absolute path of this repository. Pier passes it to Docker Compose so the pricing bind mount (`pricing/subconscious-tim-qwen3.6-27b.json`) resolves correctly (relative paths are not supported).
+
+### Token pricing
+
+Both job configs mount a LiteLLM model registry at `pricing/subconscious-tim-qwen3.6-27b.json` for `subconscious/tim-qwen3.6-27b` (keep in sync with `BASETEN_MODEL` in `.env`):
+
+| Kind | Rate |
+|------|------|
+| Input tokens | $0.50 / 1M |
+| Cached input tokens | $0.05 / 1M |
+| Output tokens | $3.50 / 1M |
+
+Costs appear in `jobs/<job-dir>/result.json` as `stats.cost_usd` and per-trial `agent_result.cost_usd` when the run completes.
+
+### Dev vs full limits
+
+| | Dev (`mini-swe-agent-dev.yaml`) | Full (`mini-swe-agent-full.yaml`) |
+|--|--------------------------------|-----------------------------------|
+| Concurrent trials | 1 | 4 |
+| Agent timeout | 30 min (`override_timeout_sec`) | 90 min (`task.toml` `[agent] timeout_sec`) |
+| Step limit | 600 | Unlimited until timeout (mini-swe default) |
+| Tasks | Pinned in YAML (edit `task_names`) | All 113 under `tasks/` |
+
+## Pause, resume, and recover
+
+1. **Pause:** Press `Ctrl+C` once in the terminal running `pier run`. Let Pier shut down gracefully before force-killing the process or closing the laptop.
+2. **What is saved:** `jobs/<timestamp>/config.json`, `result.json`, `lock.json`, and per-trial directories with `result.json` for finished trials.
+3. **Resume** (use the same job YAML you started with; do not change mounts, pricing env, timeouts, or model between start and resume):
+
+```bash
+pier job resume -p jobs/<job-dir>
+```
+
+- Completed trials are skipped; only remaining trials run.
+- By default, `pier job resume` removes trial dirs that ended with `CancelledError` so those tasks are retried.
+- Trial folders without `result.json` but with partial artifacts are cleaned up and restarted from scratch.
+- Resume does **not** continue a single agent mid-trajectory—only at **trial** granularity.
+
+Inspect progress and costs with `pier view jobs`.
 
 ## What is Pier
 

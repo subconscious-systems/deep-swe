@@ -1,0 +1,57 @@
+# Pier job (dev): mini-swe-agent → Baseten Chat Completions (via LiteLLM).
+#
+# Quick smoke / iteration — NOT leaderboard-comparable.
+#   pier run -c mini-swe-agent-dev.yaml --env-file .env -y
+#   pier run -c mini-swe-agent-dev.yaml --env-file .env -y -p tasks/<task-id>
+#
+# Dev caps (not used on full eval): 30 min agent timeout, 600 step limit, 1 worker.
+# Same token pricing as full: pricing/subconscious-tim-qwen3.6-27b.json
+#
+# Resume after interrupt:
+#   pier job resume -p jobs/<job-dir>
+#
+# Full eval: mini-swe-agent-full.yaml
+
+n_concurrent_trials: 1
+
+agents:
+  - name: mini-swe-agent
+    override_timeout_sec: 1800
+    # Keep in sync with BASETEN_MODEL in .env
+    model_name: subconscious/tim-qwen3.6-27b
+    env:
+      OPENAI_API_KEY: ${BASETEN_API_KEY}
+      OPENAI_BASE_URL: ${BASETEN_BASE_URL}
+      # Required for custom model slugs Pier/LiteLLM don't recognize (e.g. subconscious/...)
+      MSWEA_API_KEY: ${BASETEN_API_KEY}
+      MSWEA_MODEL_RETRY_STOP_AFTER_ATTEMPT: "1"
+      LITELLM_MODEL_REGISTRY_PATH: /opt/deep-swe/pricing/model-registry.json
+      MSWEA_COST_TRACKING: default
+    kwargs:
+      # Use LiteLLM chat completions; avoid the openai/ prefix (that routes to Responses API)
+      model_class: litellm
+      cost_limit: 0
+      config_yaml: |
+        agent:
+          step_limit: 600
+      model_kwargs:
+        # Base URL comes from OPENAI_BASE_URL in agent.env (LiteLLM reads it from the sandbox env)
+        custom_llm_provider: openai
+        num_retries: 0
+
+datasets:
+  - path: tasks
+    task_names:
+      # - ts-pattern-match-each
+      # - happy-dom-abort-pending-body-reads
+      - true-myth-iterable-collection-combinators
+
+environment:
+  type: docker
+  mounts:
+    - type: bind
+      source: ${DEEP_SWE_ROOT}/pricing/subconscious-tim-qwen3.6-27b.json
+      target: /opt/deep-swe/pricing/model-registry.json
+      read_only: true
+
+jobs_dir: jobs
