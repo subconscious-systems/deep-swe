@@ -14,6 +14,11 @@
 #
 # Set DEEP_SWE_ROOT in .env to this repo's absolute path (bind mount for pricing).
 #
+# aarch64 note: the prebuilt task images are amd64-only, so this config sets
+# force_build: true (native arm64 builds from environment/Dockerfile).
+# Pre-build all 113 images once before the eval:
+#
+#   ./scripts/prebuild.sh    (PREBUILD_JOBS=8 to parallelize)
 #   ./run_spark.sh   (wraps: ./scripts/pier-run.sh run -c mini-swe-agent-full-spark.yaml -y)
 #
 # Resume after interrupt (same YAML; do not change config between start and resume):
@@ -49,6 +54,12 @@ datasets:
 
 environment:
   type: docker
+  # The DGX Spark is aarch64 and the prebuilt task images (task.toml
+  # [environment].docker_image) are amd64-only — force native arm64 builds from
+  # each task's environment/Dockerfile (mars-base is multi-arch). Warm the
+  # layer cache before the eval with ./scripts/prebuild.sh so the per-trial
+  # `docker compose build` is a near-instant cache hit.
+  force_build: true
   # NOTE: setting `mounts` REPLACES Pier's default /logs + /artifacts bind mounts
   # (pier/environments/docker/docker.py: mounts_json overrides _default_log_mounts).
   # Without them, tee /logs/agent/... exits 1 (NonZeroAgentExitCodeError) and no

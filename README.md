@@ -33,7 +33,8 @@ uv tool install datacurve-pier
 # Full 113-task eval (leaderboard-comparable; verification on; 4 workers)
 ./scripts/pier-run.sh run -c mini-swe-agent-full.yaml -y
 
-# Full eval on the DGX Spark (8 workers)
+# Full eval on the DGX Spark (8 workers; aarch64 — see note below)
+./scripts/prebuild.sh   # one-time: build all 113 task images natively for arm64
 ./run_spark.sh
 
 # Single task
@@ -43,6 +44,10 @@ pier run -c mini-swe-agent-dev.yaml --env-file .env -y -p tasks/<task-id>
 Job configs: `mini-swe-agent-dev.yaml` (iteration), `mini-swe-agent-full.yaml` (full eval).
 
 Set `DEEP_SWE_ROOT` in `.env` to the absolute path of this repository. Pier passes it to Docker Compose so the pricing bind mount (`pricing/subconscious-tim-qwen3.6-27b.json`) resolves correctly (relative paths are not supported).
+
+### aarch64 / DGX Spark
+
+The prebuilt task images in `task.toml` (`[environment].docker_image`) are amd64-only, and Rosetta is macOS-only — on Linux arm64 the only x86 emulation is QEMU, which is too slow and flaky for the eval. Instead, `mini-swe-agent-full-spark.yaml` sets `force_build: true` so Pier builds each task natively from `environment/Dockerfile` (the `mars-base` base image is multi-arch). Run `./scripts/prebuild.sh` once before the eval to warm the Docker layer cache (`PREBUILD_JOBS=8` to parallelize); failures are summarized with per-task logs. Two Dockerfiles carry arm64-specific fixes: `cliffy-config-file-parsing` (arch-specific Deno binary) and `eicrud-keyset-pagination-cursor` (MongoDB ships no arm64 server packages for Debian; uses the Ubuntu repo on arm64). Native arm64 environments are rebuilt, not the leaderboard's prebuilt amd64 images — tasks and verifiers are identical, but strict leaderboard comparability requires amd64.
 
 ### Token pricing
 

