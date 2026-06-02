@@ -39,6 +39,18 @@ build_one() {
   fi
   start=$(date +%s)
   if docker build -t "deepswe-env/$task:local" "$ctx" >"$LOG_DIR/$task.log" 2>&1; then
+    # Also tag the native build with the task.toml prebuilt image name: Pier's
+    # agent-install overlay always uses `FROM <docker_image>` (it ignores
+    # force_build — pier/environments/docker/docker.py write_agent_dockerfile
+    # call site), so on arm64 the overlay would otherwise build on the
+    # amd64-only ECR image and die with `exec format error`. Local tags win
+    # over registry pulls at build time, so this redirects the overlay to the
+    # native image.
+    local prebuilt
+    prebuilt=$(sed -n 's/^docker_image = "\(.*\)"$/\1/p' "$dir/task.toml" 2>/dev/null | head -1)
+    if [ -n "$prebuilt" ]; then
+      docker tag "deepswe-env/$task:local" "$prebuilt" >>"$LOG_DIR/$task.log" 2>&1
+    fi
     echo "OK    $task  ($(($(date +%s) - start))s)"
   else
     echo "FAIL  $task  ($(($(date +%s) - start))s)  log: $LOG_DIR/$task.log"
