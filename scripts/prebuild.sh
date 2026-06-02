@@ -47,12 +47,16 @@ build_one() {
 }
 export -f build_one
 
+total=${#task_dirs[@]}
+echo "Building $total task images, $JOBS in parallel — per-task build logs: $LOG_DIR"
+
 printf '%s\n' "${task_dirs[@]}" \
   | xargs -P "$JOBS" -I{} bash -c 'build_one "$1"' _ {} \
+  | awk -v t="$total" '{ printf "[%3d/%d] %s\n", ++n, t, $0; fflush() }' \
   | tee "$LOG_DIR/summary.txt"
 
-ok=$(grep -c '^OK' "$LOG_DIR/summary.txt" 2>/dev/null || true)
-fails=$(grep -c '^FAIL' "$LOG_DIR/summary.txt" 2>/dev/null || true)
+ok=$(grep -c '] OK' "$LOG_DIR/summary.txt" 2>/dev/null || true)
+fails=$(grep -c '] FAIL' "$LOG_DIR/summary.txt" 2>/dev/null || true)
 echo
 echo "Done: ${ok:-0} ok, ${fails:-0} failed. Logs: $LOG_DIR"
 [ "${fails:-0}" -eq 0 ]
