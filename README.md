@@ -25,7 +25,8 @@ Use [Pier](https://github.com/datacurve-ai/pier) to run the benchmark:
 git clone https://github.com/datacurve-ai/deep-swe
 cd deep-swe
 cp .env.example .env   # fill in BASETEN_*
-uv tool install datacurve-pier
+# >= 0.2.1 (environment.mounts support) is git-only; PyPI stops at 0.2.0
+uv tool install "datacurve-pier @ git+https://github.com/datacurve-ai/pier"
 
 # Dev smoke test (1 task, 30 min timeout, 600 step cap, 1 worker)
 ./mini-swe-agent/run_dev.sh

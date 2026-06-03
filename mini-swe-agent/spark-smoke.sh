@@ -36,7 +36,8 @@ pv="$(pier --version 2>/dev/null | head -1)"
 if [ -n "$pv" ] && [ "$(printf '%s\n' "0.2.1" "$pv" | sort -V | head -1)" = "0.2.1" ]; then
   echo "PASS  pier $pv (>= 0.2.1, supports environment.mounts)"
 else
-  echo "FAIL  pier ${pv:-not found} — need >= 0.2.1 (uv tool upgrade datacurve-pier)"
+  echo "FAIL  pier ${pv:-not found} — need >= 0.2.1, which is git-only (PyPI stops at 0.2.0):"
+  echo "      uv tool install --force 'datacurve-pier @ git+https://github.com/datacurve-ai/pier'"
   pf=1
 fi
 for f in "$ROOT/pricing/model-registry.json" "$ROOT/scripts/sitecustomize.py" \
