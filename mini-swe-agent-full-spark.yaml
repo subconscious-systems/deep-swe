@@ -38,9 +38,14 @@ agents:
       OPENAI_BASE_URL: ${BASETEN_BASE_URL}
       # Required for custom model slugs Pier/LiteLLM don't recognize (e.g. subconscious/...)
       MSWEA_API_KEY: ${BASETEN_API_KEY}
-      LITELLM_MODEL_REGISTRY_PATH: /opt/deep-swe/pricing/model-registry.json
-      # Overrides Pier's ignore_errors so unregistered models fail loudly
-      MSWEA_COST_TRACKING: default
+      # TODO: LITELLM_MODEL_REGISTRY_PATH is not a real LiteLLM env var — nothing
+      # in pier or litellm reads it, so custom pricing never wired up. Real fix:
+      # merge pricing/*.json into LiteLLM's model_prices_and_context_window_backup.json
+      # at agent-image build time (the file pier's generated Dockerfile already
+      # overwrites). Until then, MSWEA_COST_TRACKING=ignore_errors swallows the
+      # cost-calc error and we compute cost post-hoc from trajectory token counts.
+      # LITELLM_MODEL_REGISTRY_PATH: /opt/deep-swe/pricing/model-registry.json
+      MSWEA_COST_TRACKING: ignore_errors
     kwargs:
       # Use LiteLLM chat completions; avoid the openai/ prefix (that routes to Responses API)
       model_class: litellm
@@ -81,9 +86,10 @@ environment:
     - type: bind
       source: ${HOST_ARTIFACTS_PATH}
       target: ${ENV_ARTIFACTS_PATH}
-    - type: bind
-      source: ${DEEP_SWE_ROOT}/pricing/subconscious-tim-qwen3.6-27b.json
-      target: /opt/deep-swe/pricing/model-registry.json
-      read_only: true
+    # TODO: re-enable alongside LITELLM_MODEL_REGISTRY_PATH (see agents[].env above).
+    # - type: bind
+    #   source: ${DEEP_SWE_ROOT}/pricing/subconscious-tim-qwen3.6-27b.json
+    #   target: /opt/deep-swe/pricing/model-registry.json
+    #   read_only: true
 
 jobs_dir: jobs
