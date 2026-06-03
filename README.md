@@ -24,7 +24,7 @@ Use [Pier](https://github.com/datacurve-ai/pier) to run the benchmark:
 ```bash
 git clone https://github.com/datacurve-ai/deep-swe
 cd deep-swe
-cp .env.example .env   # fill in BASETEN_* and DEEP_SWE_ROOT (absolute path to this repo)
+cp .env.example .env   # fill in BASETEN_*
 uv tool install datacurve-pier
 
 # Dev smoke test (1 task, 30 min timeout, 600 step cap, 1 worker)
@@ -56,7 +56,7 @@ Job configs and run wrappers live in `mini-swe-agent/`:
 | `full-spark-kimi.yaml` | `run_spark_kimi.sh` | spark eval against `tim-kimi2.6` |
 | `full-spark-optimistic-kimi.yaml` | `run_spark_optimistic_kimi.sh` | optimistic subset against `tim-kimi2.6` |
 
-Set `DEEP_SWE_ROOT` in `.env` to the absolute path of this repository. Pier passes it to Docker Compose so the `pricing/` and `scripts/` bind mounts resolve correctly (relative paths are not supported).
+`DEEP_SWE_ROOT` (used by the `pricing/` and `scripts/` bind mounts) is derived automatically by `scripts/pier-run.sh` from the checkout location — do not set it in `.env`; a stale value from another machine is stripped and overridden.
 
 ### aarch64 / DGX Spark
 

@@ -1,24 +1,11 @@
 #!/usr/bin/env bash
-# End-to-end smoke test of the full eval wiring on ONE task — run this on the
-# DGX Spark (or any box) before committing to a full run. Exercises the same
-# pipeline as run_spark.sh (same dir), but with the dev config (1 worker, 30 min cap) and
-# a single task, then verifies every piece that has burned us before:
-#
-#   1. prebuild: native task image + Pier agent-install overlay (uv +
-#      mini-swe-agent==pin + LiteLLM cost map) build successfully on this arch
-#   2. the trial's `docker compose build` is a pure cache hit (byte-identical
-#      overlay Dockerfile)
-#   3. turn_failure_model.TurnFailureModel actually loaded (PYTHONPATH mount +
-#      model_class wiring)
-#   4. sitecustomize.py timing probe wrote llm_timing.jsonl (tok/s telemetry)
-#   5. cost tracking is nonzero (LITELLM_MODEL_REGISTRY_PATH pricing registry;
-#      dev config uses MSWEA_COST_TRACKING=default, so a pricing misconfig
-#      kills the run loudly instead of silently zeroing cost)
-#   6. tps_from_logs.py renders the timeline + contention report
+# End-to-end wiring check on ONE task before committing to a full run:
+# preflight (mount sources exist) → prebuild (image + overlay) → one dev trial
+# → verify overlay cache hit, TurnFailureModel, llm_timing.jsonl, cost
+# tracking, and the tok/s report.
 #
 # Usage:
-#   ./mini-swe-agent/spark-smoke.sh                  # true-myth task (short, reliable)
-#   ./mini-swe-agent/spark-smoke.sh tasks/<task-dir>  # any other single task
+#   ./mini-swe-agent/spark-smoke.sh [tasks/<task-dir>]   # default: true-myth (short)
 #
 # Exits 0 only if the trial ran AND all wiring checks pass.
 set -uo pipefail
@@ -39,6 +26,31 @@ check() { # check <name> <0|1> [detail]
   fi
 }
 
+echo "=== [0/3] Preflight: bind-mount sources resolve on THIS machine ==="
+# If a mounted file is missing, the agent dies at startup inside the container.
+pf=0
+for f in "$ROOT/pricing/model-registry.json" "$ROOT/scripts/sitecustomize.py" \
+         "$ROOT/scripts/turn_failure_model.py"; do
+  if [ -f "$f" ]; then
+    echo "PASS  mount source exists: $f"
+  else
+    echo "FAIL  mount source MISSING: $f"
+    pf=1
+  fi
+done
+if [ -f .env ] && grep -q '^BASETEN_API_KEY=.' .env && grep -q '^BASETEN_BASE_URL=.' .env; then
+  echo "PASS  BASETEN_API_KEY / BASETEN_BASE_URL set in .env"
+else
+  echo "FAIL  BASETEN_API_KEY / BASETEN_BASE_URL missing in .env"
+  pf=1
+fi
+if [ "$pf" -ne 0 ]; then
+  echo
+  echo "Preflight failed — fix the FAILs above before burning a trial."
+  exit 1
+fi
+
+echo
 echo "=== [1/3] Prebuild: task image + agent overlay ($TASK) ==="
 ./scripts/prebuild.sh "$TASK_DIR" || { echo "prebuild failed — aborting"; exit 1; }
 
@@ -132,5 +144,12 @@ if [ "$fail" -eq 0 ]; then
   echo "SMOKE TEST PASSED — wiring verified; safe to launch ./mini-swe-agent/run_spark.sh"
 else
   echo "SMOKE TEST FAILED — fix the FAIL lines above before a full run"
+  for f in "$trial/exception.txt" "$trial/agent/mini-swe-agent.txt" "$trial/trial.log"; do
+    if [ -s "$f" ]; then
+      echo
+      echo "--- tail -25 $f ---"
+      tail -25 "$f"
+    fi
+  done
 fi
 exit "$fail"
