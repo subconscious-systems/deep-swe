@@ -15,7 +15,7 @@ actual prompt sizes and concurrency — the objective tok/s you want for sizing
 steps. (It's call-latency tok/s = prefill+queue+decode; for pure steady-state
 decode use scripts/bench_tps.py, which streams and times first-vs-last token.)
 
-Wiring (mini-swe-agent-full-spark.yaml), so the container finds this file:
+Wiring (mini-swe-agent/full-spark.yaml), so the container finds this file:
     agents[].env:
       PYTHONPATH: /opt/deep-swe/scripts        # dir containing this file
       MSWEA_TIMING_LOG: /logs/agent/llm_timing.jsonl
@@ -55,14 +55,43 @@ def _record(kwargs, response_obj, start_time, end_time, ok: bool) -> None:
         usage = getattr(usage, "model_dump", lambda: {})() or vars(usage)
     comp = usage.get("completion_tokens")
     prompt = usage.get("prompt_tokens")
+    cached = None
+    try:
+        details = usage.get("prompt_tokens_details") or {}
+        if not isinstance(details, dict):
+            details = getattr(details, "model_dump", lambda: {})() or vars(details)
+        cached = details.get("cached_tokens")
+    except Exception:
+        pass
+    # finish_reason distinguishes normal stops from max_tokens truncations
+    # (runaway-loop indicator); error class distinguishes Timeout (contention /
+    # queueing indicator) from 5xx etc. Both best-effort.
+    finish_reason = None
+    try:
+        choices = getattr(response_obj, "choices", None)
+        if choices:
+            finish_reason = getattr(choices[0], "finish_reason", None)
+    except Exception:
+        pass
+    error = None
+    if not ok:
+        try:
+            exc = (kwargs or {}).get("exception")
+            if exc is not None:
+                error = f"{type(exc).__name__}: {exc}"[:300]
+        except Exception:
+            pass
     _write({
         "start": start_time.isoformat() if start_time else None,
         "end": end_time.isoformat() if end_time else None,
         "latency_s": latency,
         "prompt_tokens": prompt,
+        "cached_tokens": cached,
         "completion_tokens": comp,
         "tok_s": (comp / latency) if (comp and latency and latency > 0) else None,
+        "finish_reason": finish_reason,
         "ok": ok,
+        "error": error,
         "model": (kwargs or {}).get("model"),
     })
 

@@ -1,0 +1,119 @@
+# Pier job (dev, KIMI): mini-swe-agent → Baseten Chat Completions (via LiteLLM).
+# Kimi variant of dev.yaml — model subconscious/tim-kimi2.6 ($0.50/1M in miss,
+# $0.15/1M in hit, $3.00/1M out);
+# keep everything except model_name in sync with dev.yaml.
+#
+# Quick smoke / iteration — NOT leaderboard-comparable.
+#   ./mini-swe-agent/run_dev_kimi.sh   (wraps: pier-run.sh run -c mini-swe-agent/dev-kimi.yaml -y)
+#   ./mini-swe-agent/run_dev_kimi.sh -p tasks/<task-id>
+#
+# Dev caps (not used on full eval): 30 min agent timeout, 600 step limit, 1 worker.
+# Same token pricing as full: pricing/model-registry.json
+#
+# Resume after interrupt:
+#   pier job resume -p jobs/<job-dir>
+#
+# Qwen variant: dev.yaml • Kimi spark eval: full-spark-kimi.yaml
+
+n_concurrent_trials: 1
+
+agents:
+  - name: mini-swe-agent
+    override_timeout_sec: 1800
+    # Keep in sync with BASETEN_MODEL in .env
+    model_name: subconscious/tim-kimi2.6
+    env:
+      OPENAI_API_KEY: ${BASETEN_API_KEY}
+      OPENAI_BASE_URL: ${BASETEN_BASE_URL}
+      # Required for custom model slugs Pier/LiteLLM don't recognize (e.g. subconscious/...)
+      MSWEA_API_KEY: ${BASETEN_API_KEY}
+      # Retry transient API errors (e.g. 502 from the inference endpoint) up to 4 times.
+      # Timeouts never retry — turn_failure_model.py converts them to failed turns.
+      MSWEA_MODEL_RETRY_STOP_AFTER_ATTEMPT: "5"
+      # mini-swe-agent 2.3.0 reads this (LitellmModelConfig.litellm_model_registry)
+      # and calls litellm.utils.register_model() — custom pricing wired natively,
+      # so per-call cost lands in the trajectory and result.json. pricing/ is
+      # bind-mounted (dir) under environment.mounts below; point this at any
+      # file in it to switch pricing curves — no rebuild. Re-price past runs
+      # with scripts/reprice.py.
+      LITELLM_MODEL_REGISTRY_PATH: /opt/deep-swe/pricing/model-registry.json
+      # Dev is the canary: fail LOUDLY (RuntimeError on the first LLM call) if
+      # pricing isn't registered, so misconfiguration is caught here and not
+      # silently zeroed on a full run (which uses ignore_errors as a safety net).
+      MSWEA_COST_TRACKING: default
+      # sitecustomize.py timing probe (auto-imported via PYTHONPATH): one JSON
+      # line per LLM call (latency, tokens, tok/s, finish_reason, errors) →
+      # analyze with scripts/tps_from_logs.py jobs/<job-dir>
+      PYTHONPATH: /opt/deep-swe/scripts
+      MSWEA_TIMING_LOG: /logs/agent/llm_timing.jsonl
+    kwargs:
+      # Custom LitellmModel subclass (scripts/turn_failure_model.py, importable
+      # via the PYTHONPATH mount): request timeouts are NOT retried and
+      # max-token truncations get a targeted reprompt — both become failed
+      # turns the agent recovers from, instead of 10x retry storms or dead
+      # episodes. Subclasses LitellmModel, so it keeps the LiteLLM chat
+      # completions path (avoid the openai/ prefix — that routes to Responses API).
+      model_class: turn_failure_model.TurnFailureModel
+      # Pin mini-swe-agent: turn_failure_model.py subclasses its internals
+      # (query/_parse_actions/abort_exceptions).
+      version: "2.3.0"
+      cost_limit: 0
+      config_yaml: |
+        agent:
+          step_limit: 600
+      model_kwargs:
+        # Base URL comes from OPENAI_BASE_URL in agent.env (LiteLLM reads it from the sandbox env)
+        custom_llm_provider: openai
+        # Keep LiteLLM-internal retries off; MSWEA_MODEL_RETRY_STOP_AFTER_ATTEMPT
+        # above handles retries (the two would multiply otherwise)
+        num_retries: 0
+        # Per-request timeout (litellm-level). Timeouts are NOT retried
+        # (turn_failure_model.py converts them to one failed turn).
+        timeout: 320
+        # Per-completion output cap: 16k fits even dense write turns; if a step
+        # truncates mid-edit the agent recovers and continues across steps
+        # (turn_failure_model discards the truncated text + reprompts)
+        max_tokens: 16384
+        # Sampling params (passed through to the completion request)
+        temperature: 0.7
+        top_p: 0.95
+
+datasets:
+  - path: tasks
+    task_names:
+      # - ts-pattern-match-each
+      # - happy-dom-abort-pending-body-reads
+      - true-myth-iterable-collection-combinators
+
+environment:
+  type: docker
+  # NOTE: setting `mounts` REPLACES Pier's default /logs + /artifacts bind mounts
+  # (pier/environments/docker/docker.py: mounts_json overrides _default_log_mounts).
+  # Without them, tee /logs/agent/... exits 1 (NonZeroAgentExitCodeError) and no
+  # trajectory/reward files are written — so re-add them here. The HOST_*/ENV_*
+  # variables are injected per-trial by Pier when it invokes docker compose.
+  mounts:
+    - type: bind
+      source: ${HOST_VERIFIER_LOGS_PATH}
+      target: ${ENV_VERIFIER_LOGS_PATH}
+    - type: bind
+      source: ${HOST_AGENT_LOGS_PATH}
+      target: ${ENV_AGENT_LOGS_PATH}
+    - type: bind
+      source: ${HOST_ARTIFACTS_PATH}
+      target: ${ENV_ARTIFACTS_PATH}
+    # Pricing registry dir for LITELLM_MODEL_REGISTRY_PATH (agents[].env
+    # above). Directory mount: add models / edit curves in pricing/ without
+    # touching this yaml — read at trial start, never baked into images.
+    - type: bind
+      source: ${DEEP_SWE_ROOT}/pricing
+      target: /opt/deep-swe/pricing
+      read_only: true
+    # sitecustomize.py (timing probe) + turn_failure_model.py, importable via
+    # the PYTHONPATH env var in agents[].env above.
+    - type: bind
+      source: ${DEEP_SWE_ROOT}/scripts
+      target: /opt/deep-swe/scripts
+      read_only: true
+
+jobs_dir: jobs

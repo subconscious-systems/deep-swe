@@ -1,0 +1,26 @@
+{
+  "subconscious/tim-kimi2.6": {
+    "litellm_provider": "openai",
+    "input_cost_per_token": 5e-07,
+    "cache_read_input_token_cost": 1.5e-07,
+    "output_cost_per_token": 3e-06
+  },
+  "tim-kimi2.6": {
+    "litellm_provider": "openai",
+    "input_cost_per_token": 5e-07,
+    "cache_read_input_token_cost": 1.5e-07,
+    "output_cost_per_token": 3e-06
+  },
+  "subconscious/tim-qwen3.6-27b": {
+    "litellm_provider": "openai",
+    "input_cost_per_token": 3e-07,
+    "cache_read_input_token_cost": 1.5e-07,
+    "output_cost_per_token": 3e-06
+  },
+  "tim-qwen3.6-27b": {
+    "litellm_provider": "openai",
+    "input_cost_per_token": 3e-07,
+    "cache_read_input_token_cost": 1.5e-07,
+    "output_cost_per_token": 3e-06
+  }
+}

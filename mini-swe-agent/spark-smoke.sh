@@ -1,0 +1,136 @@
+#!/usr/bin/env bash
+# End-to-end smoke test of the full eval wiring on ONE task — run this on the
+# DGX Spark (or any box) before committing to a full run. Exercises the same
+# pipeline as run_spark.sh (same dir), but with the dev config (1 worker, 30 min cap) and
+# a single task, then verifies every piece that has burned us before:
+#
+#   1. prebuild: native task image + Pier agent-install overlay (uv +
+#      mini-swe-agent==pin + LiteLLM cost map) build successfully on this arch
+#   2. the trial's `docker compose build` is a pure cache hit (byte-identical
+#      overlay Dockerfile)
+#   3. turn_failure_model.TurnFailureModel actually loaded (PYTHONPATH mount +
+#      model_class wiring)
+#   4. sitecustomize.py timing probe wrote llm_timing.jsonl (tok/s telemetry)
+#   5. cost tracking is nonzero (LITELLM_MODEL_REGISTRY_PATH pricing registry;
+#      dev config uses MSWEA_COST_TRACKING=default, so a pricing misconfig
+#      kills the run loudly instead of silently zeroing cost)
+#   6. tps_from_logs.py renders the timeline + contention report
+#
+# Usage:
+#   ./mini-swe-agent/spark-smoke.sh                  # true-myth task (short, reliable)
+#   ./mini-swe-agent/spark-smoke.sh tasks/<task-dir>  # any other single task
+#
+# Exits 0 only if the trial ran AND all wiring checks pass.
+set -uo pipefail
+ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+cd "$ROOT"
+
+TASK_DIR="${1:-tasks/true-myth-iterable-collection-combinators}"
+TASK="$(basename "$TASK_DIR")"
+OVERLAY_DIR="${PREBUILD_OVERLAY_DIR:-/tmp/deepswe-agent-overlays}"
+
+fail=0
+check() { # check <name> <0|1> [detail]
+  if [ "$2" -eq 0 ]; then
+    echo "PASS  $1${3:+  — $3}"
+  else
+    echo "FAIL  $1${3:+  — $3}"
+    fail=1
+  fi
+}
+
+echo "=== [1/3] Prebuild: task image + agent overlay ($TASK) ==="
+./scripts/prebuild.sh "$TASK_DIR" || { echo "prebuild failed — aborting"; exit 1; }
+
+echo
+echo "=== [2/3] Run dev trial ==="
+./mini-swe-agent/run_dev.sh -p "$TASK_DIR"
+run_rc=$?
+
+echo
+echo "=== [3/3] Verify wiring ==="
+job="$(ls -td jobs/*/ 2>/dev/null | head -1)"
+job="${job%/}"
+trial="$(ls -td "$job"/*/ 2>/dev/null | grep -v egress | head -1)"
+trial="${trial%/}"
+echo "job:   $job"
+echo "trial: $trial"
+echo
+
+check "pier run exited 0" "$run_rc"
+
+# (2) overlay cache hit: trial Dockerfile byte-identical to the prebuilt one
+if [ -f "$trial/agent-build-context/Dockerfile" ] && [ -f "$OVERLAY_DIR/$TASK/Dockerfile" ]; then
+  diff -q "$trial/agent-build-context/Dockerfile" "$OVERLAY_DIR/$TASK/Dockerfile" >/dev/null
+  check "overlay Dockerfile identical (trial build = cache hit)" $?
+else
+  check "overlay Dockerfile identical (trial build = cache hit)" 1 "Dockerfile missing on one side"
+fi
+
+# (3) custom model class loaded
+python3 - "$trial" <<'PY'
+import json, sys
+trial = sys.argv[1]
+try:
+    info = json.load(open(f"{trial}/agent/mini-swe-agent.trajectory.json")).get("info", {})
+    mt = (info.get("config") or {}).get("model_type", "")  # LitellmModel.serialize()
+    ok = mt.endswith("TurnFailureModel")
+    print(f"{'PASS' if ok else 'FAIL'}  TurnFailureModel loaded  — model_type: {mt or 'missing'}")
+    sys.exit(0 if ok else 1)
+except Exception as e:
+    print(f"FAIL  TurnFailureModel loaded  — {e}")
+    sys.exit(1)
+PY
+[ $? -ne 0 ] && fail=1
+
+# (4) timing probe wrote per-call records
+if [ -s "$trial/agent/llm_timing.jsonl" ]; then
+  n=$(wc -l < "$trial/agent/llm_timing.jsonl" | tr -d ' ')
+  check "llm_timing.jsonl written" 0 "$n calls logged"
+else
+  check "llm_timing.jsonl written" 1 "missing or empty"
+fi
+
+# (5) cost tracking nonzero
+python3 - "$trial" <<'PY'
+import json, sys
+trial = sys.argv[1]
+try:
+    ar = json.load(open(f"{trial}/result.json")).get("agent_result") or {}
+    cost, out_toks = ar.get("cost_usd"), ar.get("n_output_tokens")
+    ok = bool(cost and cost > 0)
+    print(f"{'PASS' if ok else 'FAIL'}  cost tracked  — cost_usd: {cost}, output_tokens: {out_toks}")
+    sys.exit(0 if ok else 1)
+except Exception as e:
+    print(f"FAIL  cost tracked  — {e}")
+    sys.exit(1)
+PY
+[ $? -ne 0 ] && fail=1
+
+# reward (informational — a failed task is NOT a wiring failure)
+python3 - "$trial" <<'PY'
+import json, sys
+try:
+    r = json.load(open(f"{sys.argv[1]}/result.json"))
+    vr = r.get("verifier_result") or {}
+    print(f"INFO  task reward: {vr.get('reward')}  exception: {(r.get('exception_info') or {}).get('exception_type')}")
+except Exception as e:
+    print(f"INFO  task reward: unavailable ({e})")
+PY
+
+# (6) tok/s report renders
+echo
+echo "--- tps_from_logs.py $job ---"
+if python3 scripts/tps_from_logs.py "$job"; then
+  check "tps_from_logs report" 0
+else
+  check "tps_from_logs report" 1
+fi
+
+echo
+if [ "$fail" -eq 0 ]; then
+  echo "SMOKE TEST PASSED — wiring verified; safe to launch ./mini-swe-agent/run_spark.sh"
+else
+  echo "SMOKE TEST FAILED — fix the FAIL lines above before a full run"
+fi
+exit "$fail"

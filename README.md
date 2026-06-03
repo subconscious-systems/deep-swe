@@ -28,42 +28,54 @@ cp .env.example .env   # fill in BASETEN_* and DEEP_SWE_ROOT (absolute path to t
 uv tool install datacurve-pier
 
 # Dev smoke test (1 task, 30 min timeout, 600 step cap, 1 worker)
-./run_dev.sh
+./mini-swe-agent/run_dev.sh
 
 # Full 113-task eval (leaderboard-comparable; verification on; 4 workers)
-./scripts/pier-run.sh run -c mini-swe-agent-full.yaml -y
+./scripts/pier-run.sh run -c mini-swe-agent/full.yaml -y
 
 # Full eval on the DGX Spark (8 workers; aarch64 — see note below)
-./scripts/prebuild.sh   # one-time: build all 113 task images natively for arm64
-./run_spark.sh
+./scripts/prebuild.sh   # one-time: task images + agent overlays, natively for arm64
+./mini-swe-agent/run_spark.sh
+
+# One-task end-to-end wiring check (prebuild → trial → verify telemetry/cost)
+./mini-swe-agent/spark-smoke.sh
 
 # Single task
-pier run -c mini-swe-agent-dev.yaml --env-file .env -y -p tasks/<task-id>
+pier run -c mini-swe-agent/dev.yaml --env-file .env -y -p tasks/<task-id>
 ```
 
-Job configs: `mini-swe-agent-dev.yaml` (iteration), `mini-swe-agent-full.yaml` (full eval).
+Job configs and run wrappers live in `mini-swe-agent/`:
 
-Set `DEEP_SWE_ROOT` in `.env` to the absolute path of this repository. Pier passes it to Docker Compose so the pricing bind mount (`pricing/subconscious-tim-qwen3.6-27b.json`) resolves correctly (relative paths are not supported).
+| Config | Wrapper | What |
+|--------|---------|------|
+| `dev.yaml` | `run_dev.sh` | 1-task smoke / iteration |
+| `full.yaml` | — | full 113-task eval (laptop, 4 workers) |
+| `full-spark.yaml` | `run_spark.sh` | full eval, DGX Spark (8 workers) |
+| `full-spark-optimistic.yaml` | `run_spark_optimistic.sh` | 22 tasks with >=50% avg pass rate, 1 attempt |
+| `dev-kimi.yaml` | `run_dev_kimi.sh` | dev against `tim-kimi2.6` |
+| `full-spark-kimi.yaml` | `run_spark_kimi.sh` | spark eval against `tim-kimi2.6` |
+| `full-spark-optimistic-kimi.yaml` | `run_spark_optimistic_kimi.sh` | optimistic subset against `tim-kimi2.6` |
+
+Set `DEEP_SWE_ROOT` in `.env` to the absolute path of this repository. Pier passes it to Docker Compose so the `pricing/` and `scripts/` bind mounts resolve correctly (relative paths are not supported).
 
 ### aarch64 / DGX Spark
 
-The prebuilt task images in `task.toml` (`[environment].docker_image`) are amd64-only, and Rosetta is macOS-only — on Linux arm64 the only x86 emulation is QEMU, which is too slow and flaky for the eval. Instead, `mini-swe-agent-full-spark.yaml` sets `force_build: true` so Pier builds each task natively from `environment/Dockerfile` (the `mars-base` base image is multi-arch). Run `./scripts/prebuild.sh` once before the eval to warm the Docker layer cache (`PREBUILD_JOBS=8` to parallelize); failures are summarized with per-task logs. Two Dockerfiles carry arm64-specific fixes: `cliffy-config-file-parsing` (arch-specific Deno binary) and `eicrud-keyset-pagination-cursor` (MongoDB ships no arm64 server packages for Debian; uses the Ubuntu repo on arm64). Native arm64 environments are rebuilt, not the leaderboard's prebuilt amd64 images — tasks and verifiers are identical, but strict leaderboard comparability requires amd64.
+The prebuilt task images in `task.toml` (`[environment].docker_image`) are amd64-only, and Rosetta is macOS-only — on Linux arm64 the only x86 emulation is QEMU, which is too slow and flaky for the eval. Instead, `mini-swe-agent/full-spark.yaml` sets `force_build: true` so Pier builds each task natively from `environment/Dockerfile` (the `mars-base` base image is multi-arch). Run `./scripts/prebuild.sh` once before the eval to warm the Docker layer cache (`PREBUILD_JOBS=8` to parallelize); failures are summarized with per-task logs. Two Dockerfiles carry arm64-specific fixes: `cliffy-config-file-parsing` (arch-specific Deno binary) and `eicrud-keyset-pagination-cursor` (MongoDB ships no arm64 server packages for Debian; uses the Ubuntu repo on arm64). Native arm64 environments are rebuilt, not the leaderboard's prebuilt amd64 images — tasks and verifiers are identical, but strict leaderboard comparability requires amd64.
 
 ### Token pricing
 
-Both job configs mount a LiteLLM model registry at `pricing/subconscious-tim-qwen3.6-27b.json` for `subconscious/tim-qwen3.6-27b` (keep in sync with `BASETEN_MODEL` in `.env`):
+All job configs bind-mount `pricing/` and register `pricing/model-registry.json` (combined, one entry per model slug) via `LITELLM_MODEL_REGISTRY_PATH` at trial start — pricing/model changes never require an image rebuild:
 
-| Kind | Rate |
-|------|------|
-| Input tokens | $0.50 / 1M |
-| Cached input tokens | $0.05 / 1M |
-| Output tokens | $3.50 / 1M |
+| Model | Input (cache miss) | Input (cache hit) | Output |
+|-------|--------------------|-------------------|--------|
+| `subconscious/tim-qwen3.6-27b` | $0.30 / 1M | $0.15 / 1M | $3.00 / 1M |
+| `subconscious/tim-kimi2.6` | $0.50 / 1M | $0.15 / 1M | $3.00 / 1M |
 
-Costs appear in `jobs/<job-dir>/result.json` as `stats.cost_usd` and per-trial `agent_result.cost_usd` when the run completes.
+Costs appear in `jobs/<job-dir>/result.json` as `stats.cost_usd` and per-trial `agent_result.cost_usd` when the run completes. Per-call token counts are also logged (`llm_timing.jsonl`), so any past run can be re-priced under a different curve without rerunning: `python3 scripts/reprice.py jobs/<job-dir> pricing/<curve>.json`.
 
 ### Dev vs full limits
 
-| | Dev (`mini-swe-agent-dev.yaml`) | Full (`mini-swe-agent-full.yaml`) |
+| | Dev (`mini-swe-agent/dev.yaml`) | Full (`mini-swe-agent/full.yaml`) |
 |--|--------------------------------|-----------------------------------|
 | Concurrent trials | 1 | 4 |
 | Agent timeout | 30 min (`override_timeout_sec`) | 90 min (`task.toml` `[agent] timeout_sec`) |
