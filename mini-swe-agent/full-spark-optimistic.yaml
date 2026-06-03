@@ -61,8 +61,7 @@ datasets:
       - koota-entity-snapshot-rollback  # 50%
       - obsidian-linter-scoped-ignore-markers  # 50%
       - aiomonitor-task-snapshots-diff  # 50%
-      # avg % missing from the source list (likely <50%) — uncomment to include:
-      # - helm-unified-manifest-stream
+      - helm-unified-manifest-stream  # 50%
 
 environment:
   type: docker

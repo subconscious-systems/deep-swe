@@ -30,9 +30,9 @@ agents:
       model_kwargs:
         custom_llm_provider: openai  # chat completions against OPENAI_BASE_URL
         num_retries: 0               # litellm-internal retries off; MSWEA_* above handles them
-        timeout: 480                  # per-request cap; a timeout costs one failed turn
+        timeout: 200                  # 160t/s per-request cap; a timeout costs one failed turn
         max_tokens: 16384            # per-completion output cap; truncation costs one failed turn
-        temperature: 0.7
+        temperature: 0.6
         top_p: 0.95
 
 datasets:

@@ -29,9 +29,9 @@ agents:
       model_kwargs:
         custom_llm_provider: openai  # chat completions against OPENAI_BASE_URL
         num_retries: 0               # litellm-internal retries off; MSWEA_* above handles them
-        timeout: 480                  # per-request cap; a timeout costs one failed turn
+        timeout: 200                  # 160t/s per-request cap; a timeout costs one failed turn
         max_tokens: 16384            # per-completion output cap; truncation costs one failed turn
-        temperature: 0.7
+        temperature: 0.6
         top_p: 0.95
 
 datasets:
@@ -60,8 +60,7 @@ datasets:
       - koota-entity-snapshot-rollback  # 50%
       - obsidian-linter-scoped-ignore-markers  # 50%
       - aiomonitor-task-snapshots-diff  # 50%
-      # avg % missing from the source list (likely <50%) — uncomment to include:
-      # - helm-unified-manifest-stream
+      - helm-unified-manifest-stream  # 50%
 
 environment:
   type: docker
