@@ -2,6 +2,9 @@
 # everything except model_name in sync with dev.yaml.
 #   ./mini-swe-agent/run_dev_kimi.sh [-p tasks/<task-id>]
 # Qwen: dev.yaml • Kimi spark eval: full-spark-kimi.yaml
+#
+# Inference: http://kimi.subconscious.dev/v1 (Cloudflare A → GCP).
+# Preflight: ./scripts/check_kimi_endpoint.sh
 
 n_concurrent_trials: 1
 
@@ -10,9 +13,9 @@ agents:
     override_timeout_sec: 1800
     model_name: subconscious/tim-kimi2.6
     env:
-      OPENAI_API_KEY: ${BASETEN_API_KEY}
-      OPENAI_BASE_URL: ${BASETEN_BASE_URL}
-      MSWEA_API_KEY: ${BASETEN_API_KEY}          # required for custom model slugs
+      OPENAI_API_KEY: not-used
+      OPENAI_BASE_URL: http://kimi.subconscious.dev/v1
+      MSWEA_API_KEY: not-used
       MSWEA_MODEL_RETRY_STOP_AFTER_ATTEMPT: "5"  # 5xx/connection retries; timeouts never retry
       # custom pricing, read at trial start (re-price later: scripts/reprice.py)
       LITELLM_MODEL_REGISTRY_PATH: /opt/deep-swe/pricing/model-registry.json
