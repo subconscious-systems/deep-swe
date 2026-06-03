@@ -12,9 +12,9 @@ agents:
   - name: mini-swe-agent
     model_name: subconscious/tim-kimi2.6
     env:
-      OPENAI_API_KEY: ${BASETEN_API_KEY}
-      OPENAI_BASE_URL: ${BASETEN_BASE_URL}
-      MSWEA_API_KEY: ${BASETEN_API_KEY}          # required for custom model slugs
+      OPENAI_API_KEY: ""
+      OPENAI_BASE_URL: http://34.174.29.125:7007/v1
+      MSWEA_API_KEY: ""                          # required for custom model slugs
       MSWEA_MODEL_RETRY_STOP_AFTER_ATTEMPT: "5"  # 5xx/connection retries; timeouts never retry
       # custom pricing, read at trial start (re-price later: scripts/reprice.py)
       LITELLM_MODEL_REGISTRY_PATH: /opt/deep-swe/pricing/model-registry.json
