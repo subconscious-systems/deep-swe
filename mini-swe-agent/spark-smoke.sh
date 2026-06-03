@@ -54,6 +54,23 @@ echo
 echo "=== [1/3] Prebuild: task image + agent overlay ($TASK) ==="
 ./scripts/prebuild.sh "$TASK_DIR" || { echo "prebuild failed — aborting"; exit 1; }
 
+# In-container import check with the same PYTHONPATH + mount the trial uses,
+# but without pier. PASS here + import failure in the trial = pier is not
+# injecting the env/mount (check `pier --version` and the trial's
+# docker-compose-mounts.json).
+img="deepswe-agent/$TASK:local"
+if docker run --rm -e PYTHONPATH=/opt/deep-swe/scripts \
+     -v "$ROOT/scripts:/opt/deep-swe/scripts:ro" "$img" \
+     bash -c '. "$HOME/.local/bin/env" 2>/dev/null; python_bin="$(head -1 "$(command -v mini-swe-agent)" | sed "s/^#!//")"; "$python_bin" -c "import turn_failure_model, sitecustomize"' >/dev/null 2>&1; then
+  echo "PASS  turn_failure_model + sitecustomize import inside the agent container"
+else
+  echo "FAIL  turn_failure_model does NOT import inside the agent container ($img)"
+  echo "      re-run without redirection to see why:"
+  echo "      docker run --rm -e PYTHONPATH=/opt/deep-swe/scripts -v \"$ROOT/scripts:/opt/deep-swe/scripts:ro\" $img \\"
+  echo "        bash -c '. \"\$HOME/.local/bin/env\"; python_bin=\"\$(head -1 \"\$(command -v mini-swe-agent)\" | sed \"s/^#!//\")\"; \"\$python_bin\" -c \"import turn_failure_model\"'"
+  exit 1
+fi
+
 echo
 echo "=== [2/3] Run dev trial ==="
 ./mini-swe-agent/run_dev.sh -p "$TASK_DIR"
