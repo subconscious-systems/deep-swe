@@ -29,6 +29,16 @@ check() { # check <name> <0|1> [detail]
 echo "=== [0/3] Preflight: bind-mount sources resolve on THIS machine ==="
 # If a mounted file is missing, the agent dies at startup inside the container.
 pf=0
+# environment.mounts is silently IGNORED by pier < 0.2.1 (no
+# docker-compose-mounts.json written) — the scripts/pricing mounts vanish and
+# the agent dies on the turn_failure_model import.
+pv="$(pier --version 2>/dev/null | head -1)"
+if [ -n "$pv" ] && [ "$(printf '%s\n' "0.2.1" "$pv" | sort -V | head -1)" = "0.2.1" ]; then
+  echo "PASS  pier $pv (>= 0.2.1, supports environment.mounts)"
+else
+  echo "FAIL  pier ${pv:-not found} — need >= 0.2.1 (uv tool upgrade datacurve-pier)"
+  pf=1
+fi
 for f in "$ROOT/pricing/model-registry.json" "$ROOT/scripts/sitecustomize.py" \
          "$ROOT/scripts/turn_failure_model.py"; do
   if [ -f "$f" ]; then
